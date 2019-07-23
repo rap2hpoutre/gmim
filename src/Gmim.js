@@ -22,7 +22,7 @@ class Gmim {
   }
   write(output) {
     return new Promise(async (resolve, reject) => {
-      const child = spawn(this.options.imageMagick ? "convert" : "gm", [
+      const child = spawn(this.options.imageMagick ? "convert" : "gm convert", [
         ...this.args.in,
         this.args.src,
         ...this.args.out,
@@ -36,6 +36,39 @@ class Gmim {
       });
       child.on("close", code => {
         resolve();
+      });
+    });
+  }
+  identify() {
+    return new Promise(async (resolve, reject) => {
+      const child = spawn(
+        this.options.imageMagick ? "identify" : "gm identify",
+        ["-format", "%m %q %b %wx%h %k %[orientation]", this.args.src]
+      );
+      let result = "";
+      child.stdout.on("data", data => {
+        result = data;
+      });
+      child.stderr.on("data", data => {
+        throw new Error(data);
+      });
+      child.on("close", () => {
+        const [
+          format,
+          depth,
+          filesize,
+          size,
+          colors,
+          orientation
+        ] = result.toString("utf8").split(" ");
+        resolve({
+          format: format && format.split(" ")[0],
+          depth: depth && parseInt(depth, 10),
+          filesize,
+          size,
+          colors: colors && parseInt(colors, 10),
+          orientation
+        });
       });
     });
   }
@@ -1059,6 +1092,161 @@ class Gmim {
   background(color) {
     return this.in(["-background", color]);
   }
+
+  // DRAWINGS
+
+  // http://www.graphicsmagick.org/GraphicsMagick.html#details-fill
+  fill(color) {
+    return this.out(["-fill", color || "none"]);
+  }
+
+  // http://www.graphicsmagick.org/GraphicsMagick.html#details-stroke
+  stroke(color, width) {
+    if (width) {
+      this.strokeWidth(width);
+    }
+
+    return this.out(["-stroke", color || "none"]);
+  }
+
+  // http://www.graphicsmagick.org/GraphicsMagick.html#details-strokewidth
+  strokeWidth(width) {
+    return this.out(["-strokewidth", width]);
+  }
+
+  // http://www.graphicsmagick.org/GraphicsMagick.html#details-font
+  font(font, size) {
+    if (size) {
+      this.fontSize(size);
+    }
+
+    return this.out(["-font", font]);
+  }
+
+  // http://www.graphicsmagick.org/GraphicsMagick.html
+  fontSize(size) {
+    return this.out(["-pointsize", size]);
+  }
+
+  // http://www.graphicsmagick.org/GraphicsMagick.html#details-draw
+  draw(args) {
+    return this.out(["-draw", [].slice.call(arguments).join(" ")]);
+  }
+
+  // http://www.graphicsmagick.org/GraphicsMagick.html#details-draw
+  drawPoint(x, y) {
+    return this.draw("point", x + "," + y);
+  }
+
+  // http://www.graphicsmagick.org/GraphicsMagick.html#details-draw
+  drawLine(x0, y0, x1, y1) {
+    return this.draw("line", x0 + "," + y0, x1 + "," + y1);
+  }
+
+  // http://www.graphicsmagick.org/GraphicsMagick.html#details-draw
+  drawRectangle(x0, y0, x1, y1, wc, hc) {
+    var shape = "rectangle",
+      lastarg;
+
+    if ("undefined" !== typeof wc) {
+      shape = "roundRectangle";
+
+      if ("undefined" === typeof hc) {
+        hc = wc;
+      }
+
+      lastarg = wc + "," + hc;
+    }
+
+    return this.draw(shape, x0 + "," + y0, x1 + "," + y1, lastarg);
+  }
+
+  // http://www.graphicsmagick.org/GraphicsMagick.html#details-draw
+  drawArc(x0, y0, x1, y1, a0, a1) {
+    return this.draw("arc", x0 + "," + y0, x1 + "," + y1, a0 + "," + a1);
+  }
+
+  // http://www.graphicsmagick.org/GraphicsMagick.html#details-draw
+  drawEllipse(x0, y0, rx, ry, a0, a1) {
+    if (a0 == undefined) a0 = 0;
+    if (a1 == undefined) a1 = 360;
+    return this.draw("ellipse", x0 + "," + y0, rx + "," + ry, a0 + "," + a1);
+  }
+
+  // http://www.graphicsmagick.org/GraphicsMagick.html#details-draw
+  drawCircle(x0, y0, x1, y1) {
+    return this.draw("circle", x0 + "," + y0, x1 + "," + y1);
+  }
+
+  // http://www.graphicsmagick.org/GraphicsMagick.html#details-draw
+  drawPolyline() {
+    return this.draw("polyline", formatPoints(arguments));
+  }
+
+  // http://www.graphicsmagick.org/GraphicsMagick.html#details-draw
+  drawPolygon() {
+    return this.draw("polygon", formatPoints(arguments));
+  }
+
+  // http://www.graphicsmagick.org/GraphicsMagick.html#details-draw
+  drawBezier() {
+    return this.draw("bezier", formatPoints(arguments));
+  }
+
+  // http://www.graphicsmagick.org/GraphicsMagick.html#details-draw
+  drawText(x0, y0, text, gravity) {
+    var gravity = String(gravity || "").toLowerCase(),
+      arg = ["text " + x0 + "," + y0 + " " + escape(text)];
+
+    const gravities = [
+      "northwest",
+      "north",
+      "northeast",
+      "west",
+      "center",
+      "east",
+      "southwest",
+      "south",
+      "southeast"
+    ];
+    if (~gravities.indexOf(gravity)) {
+      arg.unshift("gravity", gravity);
+    }
+
+    return this.draw.apply(this, arg);
+  }
+  // http://www.graphicsmagick.org/GraphicsMagick.html#details-draw
+  setDraw(prop, x, y, method) {
+    prop = String(prop || "").toLowerCase();
+    const drawProps = ["color", "matte"];
+    if (!~drawProps.indexOf(prop)) {
+      return this;
+    }
+
+    return this.draw(prop, x + "," + y, method);
+  }
+}
+
+function formatPoints(points) {
+  var len = points.length,
+    result = [],
+    i = 0;
+
+  for (; i < len; ++i) {
+    result.push(points[i].join(","));
+  }
+
+  return result;
+}
+
+function escape(arg) {
+  return (
+    '"' +
+    String(arg)
+      .trim()
+      .replace(/"/g, '\\"') +
+    '"'
+  );
 }
 
 module.exports = Gmim;
