@@ -76,6 +76,18 @@ async function getInfo() {
 */
 ```
 
+With custom format:
+```js
+async function getInfo() {
+  return await gmim(__dirname + "/test.png").identify("%a %b %c");
+}
+```
+
+### Using `in` and `out`
+
+If `gmim` does not supply you with a method you need or does not work as you'd like, 
+you can simply use `gmim().in()` or `gmim().out()` to set your own arguments.
+
 ## Todo
 
  - [ ] stream buffer

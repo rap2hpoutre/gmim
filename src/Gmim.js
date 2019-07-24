@@ -39,11 +39,11 @@ class Gmim {
       });
     });
   }
-  identify() {
+  identify(format = "%m %q %b %wx%h %k %[orientation]") {
     return new Promise(async (resolve, reject) => {
       const child = spawn(
         this.options.imageMagick ? "identify" : "gm identify",
-        ["-format", "%m %q %b %wx%h %k %[orientation]", this.args.src]
+        ["-format", format, this.args.src]
       );
       let result = "";
       child.stdout.on("data", data => {
